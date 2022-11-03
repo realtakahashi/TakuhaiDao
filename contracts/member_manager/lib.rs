@@ -8,13 +8,12 @@ pub use self::member_manager::{MemberManager, MemberManagerRef};
 
 #[openbrush::contract]
 pub mod member_manager {
-    use ink_env::debug_println;
     use ink_prelude::string::{String, ToString};
     use ink_prelude::vec;
     use ink_prelude::vec::Vec;
     use ink_storage::traits::SpreadAllocate;
-    use ink_storage::traits::StorageLayout;
     use ink_storage::traits::{PackedLayout, SpreadLayout};
+    use ink_storage::traits::StorageLayout;
     use openbrush::contracts::ownable::OwnableError;
     use openbrush::{contracts::ownable::*, modifiers, storage::Mapping, traits::Storage};
 
@@ -23,11 +22,12 @@ pub mod member_manager {
     )]
     #[cfg_attr(feature = "std", derive(StorageLayout, scale_info::TypeInfo))]
     pub struct MemberInfo {
-        name: String,
+        pub name: String,
         member_address: AccountId,
         member_id: u16,
         token_id: u16,
         is_electoral_commissioner: bool,
+        address_of_real_world: String
     }
 
     #[ink(storage)]
@@ -79,6 +79,8 @@ pub mod member_manager {
         AtLeastOneElectionCommissioner,
         /// Possible bug
         PossibleBug,
+        /// The Name is already used.
+        TheNameIsAlreadyUsed,
     }
 
     pub type ResultTransaction<T> = core::result::Result<T, Error>;
@@ -113,13 +115,14 @@ pub mod member_manager {
             member_address: AccountId,
             name: String,
             token_id: u16,
+            address_of_real_world: String,
         ) -> ResultTransaction<()> {
             if self.get_member_list(dao_address).len() != 0 {
                 return Err(Error::NotFirstMember);
             }
             self.next_memger_ids.insert(&dao_address,&0);
             self.next_commissioner_nos.insert(&dao_address,&0);
-            self.inline_add_member(dao_address, name, member_address, token_id, true);
+            self.inline_add_member(dao_address, name, member_address, token_id, true, address_of_real_world);
             Ok(())
         }
 
@@ -128,37 +131,51 @@ pub mod member_manager {
         #[ink(message)]
         pub fn add_member(
             &mut self,
-            _dao_address: AccountId,
-            _csv_data: String,
+            dao_address: AccountId,
+            csv_data: String,
         ) -> ResultTransaction<()> {
             if self.modifier_only_call_from_proposal_manager() == false {
                 ink_env::debug_println!("########## OnlyFromProposalManagerAddress Error.");
                 return Err(Error::OnlyFromProposalManagerAddress);
             }
 
-            let member_info = match self.inline_convert_csv_2_memberinfo(_csv_data.clone()) {
+            let member_info = match self.inline_convert_csv_2_memberinfo(csv_data.clone()) {
                 Some(value) => value,
                 None => {
-                    ink_env::debug_println!("########## CsvConvertFailure Error. csv_data:{:?}",_csv_data);
+                    ink_env::debug_println!("########## CsvConvertFailure Error. csv_data:{:?}",csv_data);
                     return Err(Error::CsvConvertFailure);
                 },
             };
+
+            let member_list = self.get_member_list(dao_address);
+            for i in 0.. member_list.len() {
+                if member_info.name == member_list[i].name {
+                    return Err(Error::TheNameIsAlreadyUsed);
+                }
+            }
+
             if self
                 .member_infoes
-                .get(&(_dao_address, member_info.member_address))
+                .get(&(dao_address, member_info.member_address))
                 != None
             {
                 ink_env::debug_println!("########## CsvConvertFailure Error.");
                 return Err(Error::MemberAlreadyExists);
             }
             self.inline_add_member(
-                _dao_address,
+                dao_address,
                 member_info.name,
                 member_info.member_address,
                 member_info.token_id,
                 false,
+                member_info.address_of_real_world
             );
             Ok(())
+        }
+
+        #[ink(message)]
+        pub fn get_member_info(&self, dao_account_id:AccountId, target_account_id:AccountId) -> Option<MemberInfo> {
+            self.member_infoes.get(&(dao_account_id, target_account_id))
         }
 
         /// delete the member
@@ -358,7 +375,7 @@ pub mod member_manager {
         ) -> ResultTransaction<()> {
             for account in candidates.clone() {
                 match self.member_infoes.get(&(dao_address, account)) {
-                    Some(value) => continue,
+                    Some(_value) => continue,
                     None => {
                         ink_env::debug_println!("########################### MemberDoesNotExist 1 Error.");        
                         return Err(Error::MemberDoesNotExist)
@@ -440,23 +457,25 @@ pub mod member_manager {
             let mut array = [0; 32];
             let bytes = &cut_address_vec[..array.len()];
             array.copy_from_slice(bytes);
-            let accountId: AccountId = array.into();
-            accountId
+            let account_id: AccountId = array.into();
+            account_id
         }
 
         #[inline]
-        fn inline_convert_csv_2_memberinfo(&self, _csv_data: String) -> Option<MemberInfo> {
-            let _array: Vec<&str> = _csv_data.split(',').collect();
-            if _array.len() != 5 {
+        fn inline_convert_csv_2_memberinfo(&self, csv_data: String) -> Option<MemberInfo> {
+            let array: Vec<&str> = csv_data.split(',').collect();
+            if array.len() != 5 {
                 return None;
             };
 
             Some(MemberInfo {
-                name: _array[0].to_string(),
-                member_address: self.convert_string_to_accountid(_array[1]),
-                member_id: _array[2].parse::<u16>().unwrap(),
-                token_id: _array[3].parse::<u16>().unwrap(),
+                name: array[0].to_string(),
+                member_address: self.convert_string_to_accountid(array[1]),
+                member_id: array[2].parse::<u16>().unwrap(),
+                token_id: array[3].parse::<u16>().unwrap(),
                 is_electoral_commissioner: false,
+                address_of_real_world: array[5].to_string(),
+
             })
         }
 
@@ -468,6 +487,7 @@ pub mod member_manager {
             member_address: AccountId,
             token_id: u16,
             is_electoral_commissioner: bool,
+            address_of_real_world: String,
         ) {
             let mut next_member_id = match self.next_memger_ids.get(&dao_address) {
                 Some(value) => value,
@@ -479,6 +499,7 @@ pub mod member_manager {
                 member_id: next_member_id,
                 token_id: token_id,
                 is_electoral_commissioner: is_electoral_commissioner,
+                address_of_real_world: address_of_real_world,
             };
 
             self.member_infoes

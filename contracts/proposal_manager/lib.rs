@@ -8,14 +8,13 @@ pub use self::proposal_manager::{ProposalManager, ProposalManagerRef};
 
 #[openbrush::contract]
 pub mod proposal_manager {
-    use ink_prelude::string::{String, ToString};
+    use ink_prelude::string::{String};
     use ink_prelude::vec::Vec;
-    use ink_storage::traits::SpreadAllocate;
     use ink_storage::traits::StorageLayout;
     use ink_storage::traits::{PackedLayout, SpreadLayout};
     use member_manager::MemberManagerRef;
     use dao_manager::DaoManagerRef;
-    use openbrush::{storage::Mapping, traits::Storage};
+    use openbrush::{storage::Mapping};
 
     #[derive(Debug, PartialEq, Eq, scale::Encode, scale::Decode)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
@@ -111,7 +110,7 @@ pub mod proposal_manager {
         title: String,
         outline: String,
         details: String,
-        githubUrl: String,
+        github_url: String,
         status: ProposalStatus,
         csv_data: String,
     }
@@ -171,7 +170,7 @@ pub mod proposal_manager {
             title: String,
             outline: String,
             details: String,
-            githubUrl: String,
+            github_url: String,
             csv_data: String,
         ) -> Result<()> {
             let caller = self.env().caller();
@@ -209,7 +208,7 @@ pub mod proposal_manager {
                 details: details,
                 status: self::ProposalStatus::Proposed,
                 proposer: caller,
-                githubUrl: githubUrl,
+                github_url: github_url,
                 csv_data: csv_data,
             };
             self.proposal_infoes
@@ -255,7 +254,7 @@ pub mod proposal_manager {
                 return Err(Error::OnlyMemberDoes);
             }
 
-            let mut proposal_info: ProposalInfo =
+            let proposal_info: ProposalInfo =
                 match self.proposal_infoes.get(&(dao_address, proposal_id)) {
                     Some(value) => value,
                     None => return Err(Error::ProposalDoesNotExist),
@@ -398,7 +397,7 @@ pub mod proposal_manager {
                 ProposalType::AddMember => {
                     match self.member_manager.add_member(_dao_address, proposal_info.clone().csv_data) {
                         Ok(()) => (),
-                        Err(e) => {
+                        Err(_e) => {
                             ink_env::debug_println!("########################### Execute Error.");
                             return Err(Error::InvalidMemberManagerCall)
                         },
@@ -407,7 +406,7 @@ pub mod proposal_manager {
                 ProposalType::DeleteMember => {
                     match self.member_manager.delete_member(_dao_address, proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => {
+                        Err(_e) => {
                             ink_env::debug_println!("########################### Execute Error.");
                             return Err(Error::InvalidMemberManagerCall)
                         },
@@ -416,43 +415,39 @@ pub mod proposal_manager {
                 ProposalType::ChangeElectoralCommissioner => {
                     match self.member_manager.change_electoral_commissioner(_dao_address,proposal_info.clone().csv_data,){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidMemberManagerCall),
+                        Err(_e) => return Err(Error::InvalidMemberManagerCall),
                     };
                     self.clear_tenure_count(_dao_address);
                 },
                 ProposalType::IssueToken => {
                     match self.dao_manager.add_dao_token(_dao_address,proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidDaoManagerCall),
+                        Err(_e) => return Err(Error::InvalidDaoManagerCall),
                     }
                 },
                 ProposalType::ChangeStatusOfTokenSale => {
                     match self.dao_manager.change_token_sales_status(_dao_address,proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidDaoManagerCall),
+                        Err(_e) => return Err(Error::InvalidDaoManagerCall),
                     }
                 },
                 ProposalType::WithdrawTokenSales => {
                     match self.dao_manager.withdraw_token_proceeds(_dao_address,proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidDaoManagerCall),
+                        Err(_e) => return Err(Error::InvalidDaoManagerCall),
                     }
                 },
                 ProposalType::DistributeGovernanceToken => {
                     match self.dao_manager.distribute_governance_token(_dao_address,proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidDaoManagerCall),
+                        Err(_e) => return Err(Error::InvalidDaoManagerCall),
                     }
                 },
                 ProposalType::UseDaoTresury => {
                     match self.dao_manager.distribute_dao_treasury(_dao_address,proposal_info.clone().csv_data){
                         Ok(()) => (),
-                        Err(e) => return Err(Error::InvalidDaoManagerCall),
+                        Err(_e) => return Err(Error::InvalidDaoManagerCall),
                     }
-                },
-                _ => {
-                    ink_env::debug_println!("########################### NotImplemented Error.");
-                    return Err(Error::NotImplemented);
                 },
             };
             proposal_info.status = ProposalStatus::Finished;
@@ -491,7 +486,7 @@ pub mod proposal_manager {
         /// clear tenure count
         fn clear_tenure_count(&mut self, _dao_address: AccountId){
             match self.count_of_tenure.get(&_dao_address) {
-                Some(value) => {
+                Some(_value) => {
                     let count = 0;
                     self.count_of_tenure.insert(&_dao_address, &count);
                 }

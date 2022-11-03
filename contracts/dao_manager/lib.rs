@@ -25,6 +25,10 @@ pub mod dao_manager {
         DistributingGovernanceTokenIsFailure,
         DistributingDaoTreasuryIsFailure,
         InvalidCsvData,
+        CanNotDeleteOwner,
+        TheMemberDoesNotExist,
+        OnlyCallFromDeliverer,
+        CallingChangeAprovalIsFailure,
     }
 
     pub type Result<T> = core::result::Result<T, Error>;
@@ -41,6 +45,11 @@ pub mod dao_manager {
         #[storage_field]
         ownable: ownable::Data,
         owner: AccountId,
+        /// deliverer id => deliverer address
+        deliverer_list_for_id: Mapping<u16, AccountId>,
+        /// deliverer address => deliverer id
+        deliverer_list_for_address: Mapping<AccountId, u16>,
+        deliverer_next_id: u16, 
     }
 
     impl Ownable for DaoManager {}
@@ -52,19 +61,64 @@ pub mod dao_manager {
                 let caller = instance.env().caller();
                 instance._init_with_owner(caller);
             })
-
-            // Self { 
-            //     proposal_manager_account_id: proposal_manager_account_id,
-            //     dao_list_for_id: Mapping::default(),
-            //     dao_list_for_address: Mapping::default(),
-            //     next_id:0,
-            //  }
         }
 
         #[ink(message)]
         pub fn set_proposal_manager_account_id(&mut self, proposal_manager_account_id:AccountId) -> Result<()> {
             self.proposal_manager_account_id = proposal_manager_account_id;
             Ok(())
+        }
+
+        #[ink(message)]
+        pub fn add_deliverer(&mut self) -> Result<()> {
+            let caller = self.env().caller();
+            self.deliverer_list_for_id.insert(&self.deliverer_next_id, &caller);
+            self.deliverer_list_for_address.insert(&caller, &self.deliverer_next_id);
+            self.deliverer_next_id = self.deliverer_next_id + 1;
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn get_deliverer_list(&self) -> Vec<AccountId> {
+            let mut list:Vec<AccountId> = Vec::new();
+            for i in 0..self.deliverer_next_id {
+                match self.deliverer_list_for_id.get(&i) {
+                    Some(value) => list.push(value.clone()),
+                    None => (),
+                }
+            }
+            list
+        }
+
+        #[ink(message)]
+        pub fn delete_deliverer(&mut self, target_account_id:AccountId) -> Result<()> {
+            if target_account_id == self.owner {
+                return Err(Error::CanNotDeleteOwner);
+            };
+            let target_id = match self.deliverer_list_for_address.get(&target_account_id) {
+                Some(value) => value,
+                None => return Err(Error::TheMemberDoesNotExist),
+            };
+            self.deliverer_list_for_address.remove(&target_account_id);
+            self.deliverer_list_for_id.remove(&target_id);
+            Ok(())
+        }   
+
+        #[ink(message)]
+        pub fn change_aproval_to_dao(&mut self, dao_account_id:AccountId, is_approved:bool) -> Result<()> {
+            if !self._dao_exists(dao_account_id){
+                return Err(Error::TheDaoDoesNotExist);
+            };
+
+            if !self._can_call_only_deliverer(){
+                return Err(Error::OnlyCallFromDeliverer);
+            };
+
+            let mut instance: DaoContractRef = ink_env::call::FromAccountId::from_account_id(dao_account_id);
+            match instance.change_aproval(is_approved) {
+                Ok(()) => Ok(()),
+                Err(_e) => return Err(Error::CallingChangeAprovalIsFailure),
+            }
         }
 
         #[ink(message)]
@@ -133,10 +187,10 @@ pub mod dao_manager {
                 return Err(Error::InvalidCsvData);
             }
             let token_account_id = self._convert_string_to_accountid(data[0]);
-            let isStart:bool = self._conver_str_2_bool(data[1]);
+            let is_start:bool = self._conver_str_2_bool(data[1]);
 
             let mut instance: DaoContractRef = ink_env::call::FromAccountId::from_account_id(dao_account_id);
-            match instance.change_token_sales_status(token_account_id, isStart) {
+            match instance.change_token_sales_status(token_account_id, is_start) {
                 Ok(()) => Ok(()),
                 Err(_e) => return Err(Error::ChangingSokenSalesStatusIsFailure),
             }
@@ -220,9 +274,18 @@ pub mod dao_manager {
         }
 
         #[inline]
+        fn _can_call_only_deliverer(&self) -> bool {
+            let caller = self.env().caller();
+            match self.deliverer_list_for_address.get(&caller) {
+                Some(_value) => return true,
+                None => false,
+            }
+        }
+
+        #[inline]
         fn _dao_exists(&self, dao_account_id:AccountId) -> bool {
             match self.dao_list_for_address.get(&dao_account_id) {
-                Some(value) => true,
+                Some(_value) => true,
                 None => false,
             }            
         }

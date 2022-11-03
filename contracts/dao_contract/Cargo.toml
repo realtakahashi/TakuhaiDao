@@ -22,6 +22,7 @@ dao_psp34 = { version = "0.1.0", path = "../dao_psp34", default-features = false
 dao_governance_token = { version = "0.1.0", path = "../dao_governance_token", default-features = false, features = ["ink-as-dependency"] }
 rustc-hex = { version="2.1.0", default-features = false }
 bs58 = { version = "0.4.0", default-features = false }
+member_manager = { version = "0.1.0", path = "../member_manager", default-features = false, features = ["ink-as-dependency"] }
 
 [lib]
 name = "dao_contract"
@@ -45,6 +46,6 @@ std = [
     "openbrush/std",
     "rustc-hex/std",
     'bs58/std',
-
+    "member_manager/std",
 ]
 ink-as-dependency = []
